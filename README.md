@@ -26,7 +26,7 @@ To update, run `git pull` in the folder, then click ↻ on the extension's card.
 
 ## Use
 
-On a PR page, click **Copy link** or **Copy stack**, or use a shortcut:
+On a PR page or a Linear review, click **Copy link** or **Copy stack**, or use a shortcut:
 
 | Shortcut | Copies |
 | --- | --- |
@@ -39,6 +39,8 @@ On a PR page, click **Copy link** or **Copy stack**, or use a shortcut:
 | <kbd>C</kbd> then <kbd>C</kbd> | A `gh stack checkout` command |
 
 The toolbar popup (<kbd>⌥</kbd><kbd>⇧</kbd><kbd>C</kbd>) previews the stack first.
+
+On a Linear review, <kbd>C</kbd> on its own still opens a new issue, after a short pause.
 
 **Linear Reviews:** set **Links point to** in the options, and links go to each PR's
 Linear review instead. <kbd>C</kbd> <kbd>G</kbd> still copies the GitHub link.

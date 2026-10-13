@@ -27,8 +27,9 @@
   cursor: pointer;
 }
 
-.stackslop-button[hidden] {
-  display: none;
+/* Borrowed classes set their own display, which would show a hidden button. */
+.stackslop-actions [hidden] {
+  display: none !important;
 }
 
 .stackslop-button:hover {
@@ -84,6 +85,29 @@
 
 .stackslop-toast[data-outcome="failed"] svg {
   color: #f85149;
+}
+
+/* Linear's header buttons: the rest comes from the classes borrowed from its PR chip. */
+.stackslop-actions[data-size="linear"] {
+  gap: 4px;
+  margin: 0;
+}
+
+.stackslop-borrowed-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.stackslop-borrowed-button > span:last-child {
+  margin-inline-start: 6px;
+}
+
+.stackslop-borrowed-button[data-outcome="copied"] svg {
+  color: #4cb782;
+}
+
+.stackslop-borrowed-button[data-outcome="failed"] svg {
+  color: #eb5757;
 }
 
 /* The tab's other styles come from the classes it borrows from Files changed. */
