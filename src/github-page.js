@@ -49,7 +49,7 @@ linksListeners.add((url, result) => {
 
 start({
   currentPrUrl,
-  afterSync: syncLinearTab,
+  onSync: syncLinearTab,
   spots: {
     header: () => {
       // Signed in, GitHub's own header buttons sit here; sit with them at their size.

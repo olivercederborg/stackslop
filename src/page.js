@@ -247,7 +247,7 @@ const start = (site) => {
   // Sites navigate without page loads and re-render parts of the page, so re-check on DOM changes.
   const sync = () => {
     const url = site.currentPrUrl();
-    site.afterSync?.();
+    site.onSync?.();
 
     for (const [name, find] of Object.entries(site.spots)) {
       const existing = document.querySelector(`.stackslop-actions[data-spot="${name}"]`);
