@@ -196,6 +196,8 @@ const listenForShortcuts = ({ currentPrUrl, holdC }) => {
     if (!held) return;
     const { target, init } = held;
     held = null;
+    // The page has the C now, so a later key mustn't complete a shortcut with it too.
+    pressedC = 0;
     clearTimeout(release.timer);
     target.dispatchEvent(new KeyboardEvent("keydown", init));
   };
