@@ -6,8 +6,9 @@ import { fetchLinearWorkspaces, linearWorkspaceOf } from "./linear.js";
  * The Linear review URL for the "View in Linear" tab, or null when the tab is off or the
  * review is in a workspace this browser isn't signed in to.
  */
-const linearTabUrlFor = async (linearUrl, linearTab) => {
-  if (!linearUrl || linearTab === "hide") return null;
+const linearTabUrlFor = async (linearUrl) => {
+  const { linearTab } = await chrome.storage.local.get("linearTab");
+  if (linearTab === "hide") return null;
   // The tab is worth more than the check, so show it when Linear can't be asked.
   const workspaces = await fetchLinearWorkspaces().catch(() => null);
   return !workspaces || workspaces.includes(linearWorkspaceOf(linearUrl)) ? linearUrl : null;
@@ -18,7 +19,7 @@ const loadLinks = async (url) => {
   const ref = parsePrUrl(url);
   if (!ref) return { ok: false, message: "Not a pull request" };
 
-  const { token, linkTarget, linearTab } = await chrome.storage.local.get(["token", "linkTarget", "linearTab"]);
+  const { token, linkTarget } = await chrome.storage.local.get(["token", "linkTarget"]);
   try {
     const { pr, stack, stackFailed } = await fetchPrWithStack(ref, token);
     return {
@@ -26,7 +27,7 @@ const loadLinks = async (url) => {
       pr: formatPrs([pr], linkTarget),
       stack: stack && { ...formatStack(stack, linkTarget), count: stack.prs.length },
       stackFailed,
-      linearTabUrl: await linearTabUrlFor(pr.linearUrl, linearTab),
+      linearUrl: pr.linearUrl,
       plain: {
         link: linkFor(pr, linkTarget),
         github: pr.url,
@@ -46,6 +47,11 @@ const loadLinks = async (url) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "load-links") {
     loadLinks(message.url).then(sendResponse);
+    return true;
+  }
+  // Asked apart from the links, so a slow Linear never holds up a copy.
+  if (message.type === "linear-tab-url") {
+    linearTabUrlFor(message.linearUrl).then(sendResponse);
     return true;
   }
   if (message.type === "open-options") chrome.runtime.openOptionsPage();

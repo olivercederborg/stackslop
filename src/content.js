@@ -22,11 +22,20 @@ const RETRY_MS = 2000;
 const MAX_RETRIES = 3;
 
 const cache = new Map();
-// Each loaded PR's Linear review URL, or null when Linear hasn't linked it or the tab is off.
+// Each loaded PR's URL for the "View in Linear" tab, or null when it gets no tab.
 const linearUrls = new Map();
 
-// A new token or link target changes every copy, so drop what's loaded.
+// A changed setting changes every copy and the Linear tab, so drop what's loaded.
 chrome.storage.onChanged.addListener(() => cache.clear());
+
+const loadLinearTab = async (url, linearUrl) => {
+  const tabUrl = linearUrl
+    ? await chrome.runtime.sendMessage({ type: "linear-tab-url", linearUrl }).catch(() => null)
+    : null;
+  if (linearUrls.get(url) === tabUrl) return;
+  linearUrls.set(url, tabUrl);
+  syncLinearTab();
+};
 
 const loadLinks = (url) => {
   const cached = cache.get(url);
@@ -38,9 +47,7 @@ const loadLinks = (url) => {
   // A failed load is worth another try right away, so don't keep it.
   links.then((result) => {
     if ((!result.ok || result.stackFailed) && cache.get(url)?.links === links) cache.delete(url);
-    if (!result.ok || linearUrls.get(url) === result.linearTabUrl) return;
-    linearUrls.set(url, result.linearTabUrl);
-    syncLinearTab();
+    if (result.ok) loadLinearTab(url, result.linearUrl);
   });
   return links;
 };
