@@ -1,5 +1,5 @@
-// Adds "Copy link" and "Copy stack" buttons to GitHub PR pages: in the header, and next
-// to the merge button. A PR that Linear has linked also gets a "View in Linear" tab.
+// The in-page buttons and shortcuts every site shares. Each site's script describes where
+// its buttons go and which PR the page shows, then calls `start`.
 
 const COPY_ICON =
   '<svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
@@ -11,19 +11,14 @@ const CHECK_ICON = svg(
 const X_ICON = svg(
   '<path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"></path>',
 );
-const LINEAR_ICON =
-  '<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"></path></svg>';
 
-// The React PR header first, then the classic one.
-const TITLE_SELECTOR = 'h1[data-component="PH_Title"], .gh-header-title';
-const FILES_TAB_SELECTOR = '#prs-files-anchor-tab, .tabnav-tabs a[href$="/files"]';
 const CACHE_MS = 60_000;
 const RETRY_MS = 2000;
 const MAX_RETRIES = 3;
 
 const cache = new Map();
-// Each loaded PR's Linear review URL, or null when Linear hasn't linked it or the tab is off.
-const linearUrls = new Map();
+// Called with each PR's URL and its freshly loaded links.
+const linksListeners = new Set();
 
 // A new token or link target changes every copy, so drop what's loaded.
 chrome.storage.onChanged.addListener(() => cache.clear());
@@ -38,9 +33,7 @@ const loadLinks = (url) => {
   // A failed load is worth another try right away, so don't keep it.
   links.then((result) => {
     if ((!result.ok || result.stackFailed) && cache.get(url)?.links === links) cache.delete(url);
-    if (!result.ok || linearUrls.get(url) === result.linearTabUrl) return;
-    linearUrls.set(url, result.linearTabUrl);
-    syncLinearTab();
+    for (const listener of linksListeners) listener(url, result);
   });
   return links;
 };
@@ -58,13 +51,22 @@ const KINDS = {
   checkout: { keys: ["c"], name: "checkout command", pick: (result) => result.plain.checkout },
 };
 
-const createButton = (kind, label) => {
+/**
+ * A copy button, styled as GitHub's own, or with classes borrowed from a button on the page
+ * when `look` names them, since some sites' class names change between builds.
+ */
+const createButton = (kind, label, look) => {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "stackslop-button";
   button.dataset.kind = kind;
   button.setAttribute("aria-keyshortcuts", `c ${KINDS[kind].keys[0]}`);
-  button.innerHTML = `${COPY_ICON}<span></span>`;
+  if (look) {
+    button.className = `${look.button} stackslop-borrowed-button`;
+    button.innerHTML = `<span class="${look.icon}">${COPY_ICON}</span><span></span>`;
+  } else {
+    button.className = "stackslop-button";
+    button.innerHTML = `${COPY_ICON}<span></span>`;
+  }
   button.lastChild.textContent = label;
   return button;
 };
@@ -72,11 +74,11 @@ const createButton = (kind, label) => {
 // Swaps only the icon, so the button keeps its width.
 const flash = (button, outcome, message) => {
   clearTimeout(button.flashTimer);
-  button.firstElementChild.outerHTML = outcome === "copied" ? CHECK_ICON : X_ICON;
+  button.querySelector("svg").outerHTML = outcome === "copied" ? CHECK_ICON : X_ICON;
   button.dataset.outcome = outcome;
   button.title = message;
   button.flashTimer = setTimeout(() => {
-    button.firstElementChild.outerHTML = COPY_ICON;
+    button.querySelector("svg").outerHTML = COPY_ICON;
     delete button.dataset.outcome;
     button.removeAttribute("title");
   }, 1500);
@@ -128,8 +130,8 @@ const render = (url, name, spot) => {
   container.dataset.spot = name;
   container.dataset.size = spot.size;
 
-  const prButton = createButton("pr", "Copy link");
-  const stackButton = createButton("stack", "Copy stack");
+  const prButton = createButton("pr", "Copy link", spot.look);
+  const stackButton = createButton("stack", "Copy stack", spot.look);
   stackButton.hidden = true;
   container.append(prButton, stackButton);
 
@@ -161,31 +163,6 @@ const render = (url, name, spot) => {
   return container;
 };
 
-// Each spot says where its buttons go and at what size, or null when the page lacks it.
-const SPOTS = {
-  header: () => {
-    // Signed in, GitHub's own header buttons sit here; sit with them at their size.
-    const actions = document.querySelector('[data-component="PH_Actions"]');
-    const hasGitHubButtons = [...(actions?.children ?? [])].some((child) => !child.matches(".stackslop-actions"));
-    if (actions && !actions.classList.contains("d-none") && hasGitHubButtons) {
-      return { parent: actions, first: true, size: "medium" };
-    }
-    const title = document.querySelector(TITLE_SELECTOR);
-    if (!title) return null;
-    // The React header keeps the "#123" next to the title, so go after it.
-    const titleArea = title.closest('[data-component="TitleArea"]');
-    if (titleArea) return { parent: titleArea, size: "small" };
-    return { parent: title.parentElement, after: title, size: "small" };
-  },
-  "merge-box": () => {
-    // The test id is stable; GitHub's hashed CSS module class names change between builds.
-    const mergeButtons = document.querySelector(
-      '[data-testid="mergebox-border-container"] [data-component="ButtonGroup"]',
-    );
-    return mergeButtons && { parent: mergeButtons.parentElement, after: mergeButtons, size: "medium" };
-  },
-};
-
 const isPlaced = (container, spot) => {
   if (container.parentElement !== spot.parent) return false;
   if (spot.first) return spot.parent.firstElementChild === container;
@@ -198,99 +175,112 @@ const mount = (container, spot) => {
   else spot.parent.append(container);
 };
 
-const currentPrUrl = () => {
-  const match = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(location.pathname);
-  return match && `https://github.com/${match[1]}/${match[2]}/pull/${match[3]}`;
-};
-
-// Borrows the Files changed tab's classes, since GitHub's hashed class names change between builds.
-const tabClasses = (element) =>
-  [...element.classList].filter((name) => !name.startsWith("selected")).join(" ");
-
-/** Keeps a "View in Linear" tab at the end of the PR tabs while the PR has a Linear review. */
-const syncLinearTab = () => {
-  const existing = document.querySelector(".stackslop-linear-tab");
-  const linearUrl = linearUrls.get(currentPrUrl());
-  const filesTab = linearUrl && document.querySelector(FILES_TAB_SELECTOR);
-  if (!filesTab) return existing?.remove();
-
-  const className = `${tabClasses(filesTab)} stackslop-linear-tab`;
-  const current = existing?.href === linearUrl && existing.className === className;
-  if (current && filesTab.parentElement.lastElementChild === existing) return;
-
-  existing?.remove();
-  const tab = document.createElement("a");
-  tab.className = className;
-  tab.href = linearUrl;
-  tab.innerHTML = `${LINEAR_ICON}View in Linear`;
-  const filesIcon = filesTab.querySelector("svg");
-  if (filesIcon) tab.firstElementChild.setAttribute("class", tabClasses(filesIcon));
-  filesTab.parentElement.append(tab);
-};
-
-// GitHub navigates without page loads and re-renders parts of the page, so re-check on DOM changes.
-const sync = () => {
-  const url = currentPrUrl();
-  syncLinearTab();
-
-  for (const [name, find] of Object.entries(SPOTS)) {
-    const existing = document.querySelector(`.stackslop-actions[data-spot="${name}"]`);
-    const spot = url && find();
-    const current = existing && spot && existing.dataset.url === url && existing.dataset.size === spot.size;
-    // Only touch the DOM when something changed, or the observer would loop.
-    if (current && isPlaced(existing, spot)) continue;
-
-    if (current) mount(existing, spot);
-    else {
-      existing?.remove();
-      if (spot) mount(render(url, name, spot), spot);
-    }
-  }
-};
-
-let scheduled = false;
-new MutationObserver(() => {
-  if (scheduled) return;
-  scheduled = true;
-  requestAnimationFrame(() => {
-    scheduled = false;
-    sync();
-  });
-}).observe(document.documentElement, { childList: true, subtree: true });
-sync();
-
-// A PR can join a stack after its page loaded, so look again when the tab comes back.
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) return;
-  for (const container of document.querySelectorAll(".stackslop-actions")) container.reload();
-});
-
-// Graphite's shortcuts: C, then the key a kind lists. The first C still reaches GitHub,
-// which uses it on the Files tab; only the second key is ours.
+// Graphite's shortcuts: C, then the key a kind lists, within this window.
 const SHORTCUT_WINDOW_MS = 1500;
-let pressedC = 0;
 
 const isTyping = (target) =>
   target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
 
-window.addEventListener(
-  "keydown",
-  (event) => {
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat) return;
-    if (isTyping(event.target)) return;
+/**
+ * Listens for C then a kind's key on the site's PR pages. The first C reaches the page,
+ * unless `holdC` is set: then the page gets it only once the window ends or another key
+ * follows, for sites where C alone opens something that would take the next key.
+ */
+const listenForShortcuts = ({ currentPrUrl, holdC }) => {
+  const windowMs = holdC ?? SHORTCUT_WINDOW_MS;
+  let pressedC = 0;
+  let held = null;
 
-    const key = event.key.toLowerCase();
-    const afterC = Date.now() - pressedC < SHORTCUT_WINDOW_MS;
-    const kind = afterC && Object.keys(KINDS).find((k) => KINDS[k].keys.includes(key));
-    const url = currentPrUrl();
-    // A completed shortcut ends the sequence, so C then C doesn't arm a third key.
-    pressedC = key === "c" && !kind ? Date.now() : 0;
-    if (!kind || !url) return;
+  // Hands a held C back to the page as it was pressed.
+  const release = () => {
+    if (!held) return;
+    const { target, init } = held;
+    held = null;
+    clearTimeout(release.timer);
+    target.dispatchEvent(new KeyboardEvent("keydown", init));
+  };
 
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    copy(kind, loadLinks(url), toast);
-  },
-  // Capture on window runs before GitHub's own key handlers.
-  true,
-);
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      // Skips the C this handed back.
+      if (!event.isTrusted) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat) return;
+      if (isTyping(event.target)) return;
+
+      const key = event.key.toLowerCase();
+      const afterC = Date.now() - pressedC < windowMs;
+      const kind = afterC && Object.keys(KINDS).find((k) => KINDS[k].keys.includes(key));
+      const url = currentPrUrl();
+      if (kind && url) {
+        held = null;
+        clearTimeout(release.timer);
+        pressedC = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        copy(kind, loadLinks(url), toast);
+        return;
+      }
+
+      // Any other key gets the held C first, so the page sees keys in the order pressed.
+      release();
+      pressedC = key === "c" && url ? Date.now() : 0;
+      if (!pressedC || !holdC) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      held = {
+        target: event.target,
+        init: { key: event.key, code: event.code, keyCode: event.keyCode, bubbles: true, cancelable: true, composed: true },
+      };
+      release.timer = setTimeout(release, holdC);
+    },
+    // Capture on window runs before the site's own key handlers.
+    true,
+  );
+};
+
+/**
+ * Keeps the site's buttons in place as the page changes, and listens for the shortcuts.
+ * `spots` map each spot's name to a function that says where its buttons go, or null when
+ * the page lacks it.
+ */
+const start = (site) => {
+  // Sites navigate without page loads and re-render parts of the page, so re-check on DOM changes.
+  const sync = () => {
+    const url = site.currentPrUrl();
+    site.afterSync?.();
+
+    for (const [name, find] of Object.entries(site.spots)) {
+      const existing = document.querySelector(`.stackslop-actions[data-spot="${name}"]`);
+      const spot = url && find();
+      const current = existing && spot && existing.dataset.url === url && existing.dataset.size === spot.size;
+      // Only touch the DOM when something changed, or the observer would loop.
+      if (current && isPlaced(existing, spot)) continue;
+
+      if (current) mount(existing, spot);
+      else {
+        existing?.remove();
+        if (spot) mount(render(url, name, spot), spot);
+      }
+    }
+  };
+
+  let scheduled = false;
+  new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      sync();
+    });
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  sync();
+
+  // A PR can join a stack after its page loaded, so look again when the tab comes back.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    for (const container of document.querySelectorAll(".stackslop-actions")) container.reload();
+  });
+
+  listenForShortcuts(site);
+};
