@@ -204,9 +204,9 @@ const listenForShortcuts = ({ currentPrUrl, holdC }) => {
     "keydown",
     (event) => {
       // Skips the C this handed back.
-      if (!event.isTrusted) return;
-      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat) return;
-      if (isTyping(event.target)) return;
+      if (!event.isTrusted || event.repeat) return;
+      // Keys the shortcuts ignore still get the held C first, so the page sees keys in order.
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || isTyping(event.target)) return release();
 
       const key = event.key.toLowerCase();
       const afterC = Date.now() - pressedC < windowMs;
@@ -222,7 +222,6 @@ const listenForShortcuts = ({ currentPrUrl, holdC }) => {
         return;
       }
 
-      // Any other key gets the held C first, so the page sees keys in the order pressed.
       release();
       pressedC = key === "c" && url ? Date.now() : 0;
       if (!pressedC || !holdC) return;
