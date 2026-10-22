@@ -20,14 +20,14 @@ const loadLinks = async (url) => {
 
   const { token, linkTarget, linearTab } = await chrome.storage.local.get(["token", "linkTarget", "linearTab"]);
   try {
-    const loaded = await fetchPrWithStack(ref, token);
-    const wantsLinear = linkTarget === "linear" || linearTab !== "hide";
-    const { pr, stack, stackFailed } = wantsLinear ? await withLinearReviews(ref, loaded) : loaded;
+    // O then L opens the Linear review whatever the settings, so always look for it.
+    const { pr, stack, stackFailed } = await withLinearReviews(ref, await fetchPrWithStack(ref, token));
     return {
       ok: true,
       pr: formatPrs([pr], linkTarget),
       stack: stack && { ...formatStack(stack, linkTarget), count: stack.prs.length },
       stackFailed,
+      linearUrl: pr.linearUrl,
       linearTabUrl: await linearTabUrlFor(pr.linearUrl, linearTab),
       plain: {
         link: linkFor(pr, linkTarget),

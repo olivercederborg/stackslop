@@ -186,14 +186,24 @@ const SHORTCUT_WINDOW_MS = 1500;
 const isTyping = (target) =>
   target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
 
+/** Opens the page an O shortcut names for the PR, or says why it can't. */
+const open = ({ name, pick }, links) =>
+  links.then((result) => {
+    const target = result.ok && pick(result);
+    if (target) location.assign(target);
+    else toast("failed", result.ok ? `This PR has no ${name}` : `Couldn't open ${name}: ${result.message}`);
+  });
+
 /**
- * Listens for C then a kind's key on the site's PR pages. The first C reaches the page,
- * unless `holdC` is set: then the page gets it only once the window ends or another key
- * follows, for sites where C alone opens something that would take the next key.
+ * Listens for C then a kind's key on the site's PR pages, and O then a key in `opens`. The
+ * first C reaches the page, unless `holdC` is set: then the page gets it only once the
+ * window ends or another key follows, for sites where C alone opens something that would
+ * take the next key.
  */
-const listenForShortcuts = ({ currentPrUrl, holdC }) => {
+const listenForShortcuts = ({ currentPrUrl, holdC, opens = {} }) => {
   const windowMs = holdC ?? SHORTCUT_WINDOW_MS;
   let pressedC = 0;
+  let pressedO = 0;
   let held = null;
 
   // Hands a held C back to the page as it was pressed.
@@ -228,9 +238,18 @@ const listenForShortcuts = ({ currentPrUrl, holdC }) => {
         copy(kind, loadLinks(url), toast);
         return;
       }
+      const page = Date.now() - pressedO < SHORTCUT_WINDOW_MS && Object.hasOwn(opens, key) && opens[key];
+      if (page && url) {
+        pressedO = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        open(page, loadLinks(url));
+        return;
+      }
 
       release();
       pressedC = key === "c" && url ? Date.now() : 0;
+      pressedO = key === "o" && url ? Date.now() : 0;
       if (!pressedC || !holdC) return;
       event.preventDefault();
       event.stopImmediatePropagation();
