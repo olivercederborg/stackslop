@@ -1,6 +1,6 @@
 import { formatPrs, formatStack, linkFor } from "./format.js";
 import { GitHubError, fetchPrWithStack, parsePrUrl } from "./github.js";
-import { fetchLinearWorkspaces, linearWorkspaceOf } from "./linear.js";
+import { fetchLinearWorkspaces, linearWorkspaceOf, withLinearReviews } from "./linear.js";
 
 /**
  * The Linear review URL for the "View in Linear" tab, or null when the tab is off or the
@@ -20,7 +20,9 @@ const loadLinks = async (url) => {
 
   const { token, linkTarget, linearTab } = await chrome.storage.local.get(["token", "linkTarget", "linearTab"]);
   try {
-    const { pr, stack, stackFailed } = await fetchPrWithStack(ref, token);
+    const loaded = await fetchPrWithStack(ref, token);
+    const wantsLinear = linkTarget === "linear" || linearTab !== "hide";
+    const { pr, stack, stackFailed } = wantsLinear ? await withLinearReviews(ref, loaded) : loaded;
     return {
       ok: true,
       pr: formatPrs([pr], linkTarget),
