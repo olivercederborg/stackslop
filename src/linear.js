@@ -3,41 +3,57 @@
 const API = "https://client-api.linear.app/graphql";
 
 /**
- * Returns the workspaces (as the names in their linear.app URLs) this browser is signed in
- * to, which is none when signed out. Throws when Linear doesn't give a usable answer.
+ * Asks Linear's API with the browser's Linear cookies, as the workspace user `as` when
+ * given. Returns null when signed out. Throws when Linear doesn't give a usable answer.
  */
-export const fetchLinearWorkspaces = async () => {
-  const response = await fetch(API, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query: "{ availableUsers { users { organization { urlKey } } } }" }),
-  });
-  if (response.status === 401) return [];
-  const { data } = await response.json();
-  return data.availableUsers.users.map((user) => user.organization.urlKey.toLowerCase());
+const query = async (body, as) => {
+  const headers = { "Content-Type": "application/json" };
+  // The cookie only says who's signed in. Like Linear's own client, these say which
+  // workspace a query is for, which anything inside a workspace needs.
+  if (as) Object.assign(headers, { user: as.userId, organization: as.organizationId });
+  const response = await fetch(API, { method: "POST", credentials: "include", headers, body: JSON.stringify(body) });
+  if (response.status === 401) return null;
+  const { data, errors } = await response.json();
+  if (errors) console.warn("Linear answered with errors", as?.workspace ?? "", response.status, errors);
+  if (!data) throw new Error(errors?.[0]?.message ?? `Linear answered ${response.status}`);
+  return data;
+};
+
+/** The workspace users this browser is signed in to Linear as, which is none when signed out. */
+const fetchLinearUsers = async () => {
+  const data = await query({ query: "{ availableUsers { users { id organization { id urlKey } } } }" });
+  return (data?.availableUsers.users ?? []).map((user) => ({
+    userId: user.id,
+    organizationId: user.organization.id,
+    workspace: user.organization.urlKey.toLowerCase(),
+  }));
 };
 
 /**
- * Maps each PR number to its Linear review URL, or null when Linear has none this browser
- * can see. Empty when signed out. Throws when Linear doesn't give a usable answer.
+ * Returns the workspaces (as the names in their linear.app URLs) this browser is signed in
+ * to, which is none when signed out. Throws when Linear doesn't give a usable answer.
+ */
+export const fetchLinearWorkspaces = async () => (await fetchLinearUsers()).map((user) => user.workspace);
+
+/**
+ * Maps each PR number to its Linear review URL, or null when no workspace this browser is
+ * signed in to has one. Empty when signed out.
  */
 const fetchLinearReviewUrls = async ({ owner, repo }, numbers) => {
   const fields = numbers
     .map((n) => `pr${n}: pullRequestByGitHubInfo(owner: $owner, repo: $repo, number: ${n}) { appUrl }`)
     .join(" ");
-  const response = await fetch(API, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      query: `query($owner: String!, $repo: String!) { ${fields} }`,
-      variables: { owner, repo },
-    }),
-  });
-  if (response.status === 401) return new Map();
-  const { data } = await response.json();
-  return new Map(numbers.map((n) => [n, data?.[`pr${n}`]?.appUrl ?? null]));
+  const body = { query: `query($owner: String!, $repo: String!) { ${fields} }`, variables: { owner, repo } };
+  // Which workspace reviews a repo isn't known up front, so ask each one. Most people have one.
+  const answers = await Promise.all(
+    (await fetchLinearUsers()).map((user) =>
+      query(body, user).catch((error) => {
+        console.warn("Linear couldn't look up the PRs", user.workspace, error);
+        return null;
+      }),
+    ),
+  );
+  return new Map(numbers.map((n) => [n, answers.map((data) => data?.[`pr${n}`]?.appUrl).find(Boolean) ?? null]));
 };
 
 /**
