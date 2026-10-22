@@ -1,6 +1,8 @@
 // Linear has no public way to ask who is signed in to it in this browser, so this uses the
 // endpoint its own web app calls, with the browser's Linear cookies.
 const API = "https://client-api.linear.app/graphql";
+// Copies wait on Linear's answer, so give up on one that's slow.
+const TIMEOUT_MS = 5000;
 
 /**
  * Asks Linear's API with the browser's Linear cookies, as the workspace user `as` when
@@ -11,7 +13,13 @@ const query = async (body, as) => {
   // The cookie only says who's signed in. Like Linear's own client, these say which
   // workspace a query is for, which anything inside a workspace needs.
   if (as) Object.assign(headers, { user: as.userId, organization: as.organizationId });
-  const response = await fetch(API, { method: "POST", credentials: "include", headers, body: JSON.stringify(body) });
+  const response = await fetch(API, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
   if (response.status === 401) return null;
   const { data, errors } = await response.json();
   if (!data) throw new Error(errors?.[0]?.message ?? `Linear answered ${response.status}`);
