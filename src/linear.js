@@ -51,7 +51,10 @@ const fetchLinearReviewUrls = async ({ owner, repo }, numbers) => {
       users.map((user) =>
         query({ query: REVIEW_QUERY, variables: { owner, repo, number } }, user).then(
           (data) => data?.pullRequestByGitHubInfo?.appUrl,
-          (error) => console.warn("Linear couldn't look up the PR", user.workspace, number, error),
+          (error) => {
+            console.warn("Linear couldn't look up the PR", user.workspace, number, error);
+            return null;
+          },
         ),
       ),
     );
