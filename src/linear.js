@@ -14,8 +14,8 @@ const query = async (body, as) => {
   const response = await fetch(API, { method: "POST", credentials: "include", headers, body: JSON.stringify(body) });
   if (response.status === 401) return null;
   const { data, errors } = await response.json();
-  if (errors) console.warn("Linear answered with errors", as?.workspace ?? "", response.status, errors);
   if (!data) throw new Error(errors?.[0]?.message ?? `Linear answered ${response.status}`);
+  if (errors) console.warn("Linear answered with errors", as?.workspace ?? "", errors);
   return data;
 };
 
@@ -35,25 +35,29 @@ const fetchLinearUsers = async () => {
  */
 export const fetchLinearWorkspaces = async () => (await fetchLinearUsers()).map((user) => user.workspace);
 
+const REVIEW_QUERY =
+  "query($owner: String!, $repo: String!, $number: Int!) { pullRequestByGitHubInfo(owner: $owner, repo: $repo, number: $number) { appUrl } }";
+
 /**
  * Maps each PR number to its Linear review URL, or null when no workspace this browser is
- * signed in to has one. Empty when signed out.
+ * signed in to has one, which is every PR when signed out.
  */
 const fetchLinearReviewUrls = async ({ owner, repo }, numbers) => {
-  const fields = numbers
-    .map((n) => `pr${n}: pullRequestByGitHubInfo(owner: $owner, repo: $repo, number: ${n}) { appUrl }`)
-    .join(" ");
-  const body = { query: `query($owner: String!, $repo: String!) { ${fields} }`, variables: { owner, repo } };
-  // Which workspace reviews a repo isn't known up front, so ask each one. Most people have one.
-  const answers = await Promise.all(
-    (await fetchLinearUsers()).map((user) =>
-      query(body, user).catch((error) => {
-        console.warn("Linear couldn't look up the PRs", user.workspace, error);
-        return null;
-      }),
-    ),
-  );
-  return new Map(numbers.map((n) => [n, answers.map((data) => data?.[`pr${n}`]?.appUrl).find(Boolean) ?? null]));
+  const users = await fetchLinearUsers();
+  // Which workspace reviews a repo isn't known up front, so ask each one. Most people have
+  // one. One PR per query, so a PR Linear doesn't know can't fail the others with it.
+  const lookup = async (number) => {
+    const urls = await Promise.all(
+      users.map((user) =>
+        query({ query: REVIEW_QUERY, variables: { owner, repo, number } }, user).then(
+          (data) => data?.pullRequestByGitHubInfo?.appUrl,
+          (error) => console.warn("Linear couldn't look up the PR", user.workspace, number, error),
+        ),
+      ),
+    );
+    return urls.find(Boolean) ?? null;
+  };
+  return new Map(await Promise.all(numbers.map(async (n) => [n, await lookup(n)])));
 };
 
 /**
