@@ -238,12 +238,12 @@ const listenForShortcuts = ({ currentPrUrl, holdC, opens = {} }) => {
         copy(kind, loadLinks(url), toast);
         return;
       }
-      const page = Date.now() - pressedO < SHORTCUT_WINDOW_MS && Object.hasOwn(opens, key) && opens[key];
-      if (page && url) {
+      const destination = Date.now() - pressedO < SHORTCUT_WINDOW_MS && Object.hasOwn(opens, key) && opens[key];
+      if (destination && url) {
         pressedO = 0;
         event.preventDefault();
         event.stopImmediatePropagation();
-        open(page, loadLinks(url));
+        open(destination, loadLinks(url));
         return;
       }
 
