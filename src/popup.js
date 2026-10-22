@@ -1,5 +1,6 @@
 import { formatPrs, formatStack, stackNote } from "./format.js";
 import { GitHubError, fetchPrWithStack, parsePrUrl } from "./github.js";
+import { withLinearReviews } from "./linear.js";
 
 const status = document.getElementById("status");
 const preview = document.getElementById("preview");
@@ -95,7 +96,8 @@ const main = async () => {
   }
 
   const { token, linkTarget } = await chrome.storage.local.get(["token", "linkTarget"]);
-  const { pr, stack } = await fetchPrWithStack(ref, token);
+  const loaded = await fetchPrWithStack(ref, token);
+  const { pr, stack } = linkTarget === "linear" ? await withLinearReviews(ref, loaded) : loaded;
 
   const hasStack = stack !== null;
   renderPreview(pr, stack);

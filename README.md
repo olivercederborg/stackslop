@@ -38,6 +38,8 @@ On a PR page or a Linear review, click **Copy link** or **Copy stack**, or use a
 | <kbd>C</kbd> then <kbd>B</kbd> | The branch name |
 | <kbd>C</kbd> then <kbd>C</kbd> | A `gh stack checkout` command |
 
+On a PR page, <kbd>O</kbd> then <kbd>L</kbd> opens its Linear review.
+
 The toolbar popup (<kbd>⌥</kbd><kbd>⇧</kbd><kbd>C</kbd>) previews the stack first.
 
 On a Linear review, <kbd>C</kbd> on its own still opens a new issue, after a short pause.
