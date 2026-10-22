@@ -20,7 +20,7 @@ const query = async (body, as) => {
 };
 
 /** The workspace users this browser is signed in to Linear as, which is none when signed out. */
-const fetchLinearUsers = async () => {
+export const fetchLinearUsers = async () => {
   const data = await query({ query: "{ availableUsers { users { id organization { id urlKey } } } }" });
   return (data?.availableUsers.users ?? []).map((user) => ({
     userId: user.id,
@@ -42,8 +42,8 @@ const REVIEW_QUERY =
  * Maps each PR number to its Linear review URL, or null when no workspace this browser is
  * signed in to has one, which is every PR when signed out.
  */
-const fetchLinearReviewUrls = async ({ owner, repo }, numbers) => {
-  const users = await fetchLinearUsers();
+const fetchLinearReviewUrls = async ({ owner, repo }, numbers, linearUsers) => {
+  const users = await linearUsers();
   // Which workspace reviews a repo isn't known up front, so ask each one. Most people have
   // one. One PR per query, so a PR Linear doesn't know can't fail the others with it.
   const lookup = async (number) => {
@@ -66,12 +66,13 @@ const fetchLinearReviewUrls = async ({ owner, repo }, numbers) => {
 /**
  * Fills in the Linear review URL of each loaded PR that has none. Linear reviews every PR,
  * but only comments its link on PRs linked to an issue, so ask Linear for the rest.
+ * `linearUsers` gets the users to ask as, for a caller that needs them for more.
  */
-export const withLinearReviews = async (ref, { pr, stack, ...rest }) => {
+export const withLinearReviews = async (ref, { pr, stack, ...rest }, linearUsers = fetchLinearUsers) => {
   const numbers = [...new Set([pr, ...(stack?.prs ?? [])].filter((p) => !p.linearUrl).map((p) => p.number))];
   if (!numbers.length) return { pr, stack, ...rest };
   // A missing review URL only drops a link back to GitHub, so a failed lookup must not block a copy.
-  const urls = await fetchLinearReviewUrls(ref, numbers).catch(() => new Map());
+  const urls = await fetchLinearReviewUrls(ref, numbers, linearUsers).catch(() => new Map());
   const fill = (p) => ({ ...p, linearUrl: p.linearUrl ?? urls.get(p.number) ?? null });
   return { pr: fill(pr), stack: stack && { ...stack, prs: stack.prs.map(fill) }, ...rest };
 };

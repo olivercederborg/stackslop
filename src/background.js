@@ -1,16 +1,16 @@
 import { formatPrs, formatStack, linkFor } from "./format.js";
 import { GitHubError, fetchPrWithStack, parsePrUrl } from "./github.js";
-import { fetchLinearWorkspaces, linearWorkspaceOf, withLinearReviews } from "./linear.js";
+import { fetchLinearUsers, linearWorkspaceOf, withLinearReviews } from "./linear.js";
 
 /**
  * The Linear review URL for the "View in Linear" tab, or null when the tab is off or the
  * review is in a workspace this browser isn't signed in to.
  */
-const linearTabUrlFor = async (linearUrl, linearTab) => {
+const linearTabUrlFor = async (linearUrl, linearTab, linearUsers) => {
   if (!linearUrl || linearTab === "hide") return null;
   // The tab is worth more than the check, so show it when Linear can't be asked.
-  const workspaces = await fetchLinearWorkspaces().catch(() => null);
-  return !workspaces || workspaces.includes(linearWorkspaceOf(linearUrl)) ? linearUrl : null;
+  const users = await linearUsers().catch(() => null);
+  return !users || users.some((user) => user.workspace === linearWorkspaceOf(linearUrl)) ? linearUrl : null;
 };
 
 // Fetches for the in-page buttons, so the token never reaches github.com's page context.
@@ -20,15 +20,18 @@ const loadLinks = async (url) => {
 
   const { token, linkTarget, linearTab } = await chrome.storage.local.get(["token", "linkTarget", "linearTab"]);
   try {
+    // The review lookup and the tab's check both need who's signed in to Linear, so ask once.
+    let users;
+    const linearUsers = () => (users ??= fetchLinearUsers());
     // O then L opens the Linear review whatever the settings, so always look for it.
-    const { pr, stack, stackFailed } = await withLinearReviews(ref, await fetchPrWithStack(ref, token));
+    const { pr, stack, stackFailed } = await withLinearReviews(ref, await fetchPrWithStack(ref, token), linearUsers);
     return {
       ok: true,
       pr: formatPrs([pr], linkTarget),
       stack: stack && { ...formatStack(stack, linkTarget), count: stack.prs.length },
       stackFailed,
       linearUrl: pr.linearUrl,
-      linearTabUrl: await linearTabUrlFor(pr.linearUrl, linearTab),
+      linearTabUrl: await linearTabUrlFor(pr.linearUrl, linearTab, linearUsers),
       plain: {
         link: linkFor(pr, linkTarget),
         github: pr.url,
