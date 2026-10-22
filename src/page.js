@@ -26,9 +26,14 @@ chrome.storage.onChanged.addListener(() => cache.clear());
 const loadLinks = (url) => {
   const cached = cache.get(url);
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.links;
-  const links = chrome.runtime
-    .sendMessage({ type: "load-links", url })
-    .catch((error) => ({ ok: false, message: error.message }));
+  // Once the extension reloads, this script lives on in open tabs but can't reach it, and
+  // sendMessage throws instead of rejecting.
+  const links = Promise.resolve()
+    .then(() => chrome.runtime.sendMessage({ type: "load-links", url }))
+    .catch((error) => ({
+      ok: false,
+      message: chrome.runtime?.id ? error.message : "Stackslop was updated, so reload the page",
+    }));
   cache.set(url, { at: Date.now(), links });
   // A failed load is worth another try right away, so don't keep it.
   links.then((result) => {
