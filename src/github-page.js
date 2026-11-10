@@ -60,6 +60,8 @@ const syncLinearTab = () => {
   const linearUrl = linearUrls.get(currentPrUrl());
   const filesTab = linearUrl && document.querySelector(FILES_TAB_SELECTOR);
   if (!filesTab) return existing?.remove();
+  // While the overview page's More menu is open, Files changed shows in it, so leave the tab be.
+  if (filesTab.closest('[role="menu"]')) return;
 
   // The overview page wraps each tab in a list item, and moves every tab into its More menu
   // when an item holds a second link.
