@@ -21,6 +21,39 @@ const currentPrUrl = () => {
 const tabClasses = (element) =>
   [...element.classList].filter((name) => !name.startsWith("selected")).join(" ");
 
+// Puts `node` in an empty copy of `model`, or returns it as is when there's no model.
+const wrapLike = (node, model) => {
+  if (!model) return node;
+  const wrapper = model.cloneNode(false);
+  wrapper.append(node);
+  return wrapper;
+};
+
+/** A "View in Linear" tab shaped like Files changed, in a list item of its own when `filesItem` is one. */
+const createLinearTab = (filesTab, filesItem, linearUrl) => {
+  const link = document.createElement("a");
+  link.className = tabClasses(filesTab);
+  link.href = linearUrl;
+  link.innerHTML = LINEAR_ICON;
+  const icon = link.firstElementChild;
+  const filesIcon = filesTab.querySelector("svg");
+  if (filesIcon) icon.setAttribute("class", tabClasses(filesIcon));
+  // The overview page wraps a tab's icon and label in spans that space them.
+  const iconModel = filesIcon && filesIcon.parentElement !== filesTab ? filesIcon.parentElement : null;
+  const labelModel = filesTab.querySelector('[data-component="text"]');
+  const label = wrapLike(document.createTextNode("View in Linear"), labelModel);
+  if (labelModel) label.dataset.content = "View in Linear";
+  link.replaceChildren(wrapLike(icon, iconModel), label);
+  if (filesItem === filesTab) {
+    link.classList.add("stackslop-linear-tab");
+    return link;
+  }
+  const item = document.createElement("li");
+  item.className = `${filesItem.className} stackslop-linear-tab`;
+  item.append(link);
+  return item;
+};
+
 /** Keeps a "View in Linear" tab at the end of the PR tabs while the PR has a Linear review. */
 const syncLinearTab = () => {
   const existing = document.querySelector(".stackslop-linear-tab");
@@ -28,18 +61,14 @@ const syncLinearTab = () => {
   const filesTab = linearUrl && document.querySelector(FILES_TAB_SELECTOR);
   if (!filesTab) return existing?.remove();
 
-  const className = `${tabClasses(filesTab)} stackslop-linear-tab`;
-  const current = existing?.href === linearUrl && existing.className === className;
-  if (current && filesTab.parentElement.lastElementChild === existing) return;
+  // The overview page wraps each tab in a list item, and moves every tab into its More menu
+  // when an item holds a second link.
+  const filesItem = filesTab.parentElement.matches("li") ? filesTab.parentElement : filesTab;
+  const tab = createLinearTab(filesTab, filesItem, linearUrl);
+  if (existing?.isEqualNode(tab) && filesItem.parentElement.lastElementChild === existing) return;
 
   existing?.remove();
-  const tab = document.createElement("a");
-  tab.className = className;
-  tab.href = linearUrl;
-  tab.innerHTML = `${LINEAR_ICON}View in Linear`;
-  const filesIcon = filesTab.querySelector("svg");
-  if (filesIcon) tab.firstElementChild.setAttribute("class", tabClasses(filesIcon));
-  filesTab.parentElement.append(tab);
+  filesItem.parentElement.append(tab);
 };
 
 linksListeners.add((url, result) => {
