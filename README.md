@@ -47,8 +47,8 @@ On a Linear review, <kbd>C</kbd> on its own still opens a new issue, after a sho
 **Linear Reviews:** set **Links point to** in the options, and links go to each PR's
 Linear review instead. <kbd>C</kbd> <kbd>G</kbd> still copies the GitHub link.
 
-**Test files:** with Linear links, the `+/-` count leaves out `*.test.*`, `*.spec.*`, and
-files under `__tests__/`, `test/`, `tests/` or `e2e/`, as Linear's review does. With GitHub
+**Test files:** with Linear links, the `+/-` count leaves out `*.test.*`, `*.spec.*`,
+`*.test-utils.*`, and files under `__tests__/`, `test/`, `tests/` or `e2e/`. With GitHub
 links, set **Test files in the diff stat** to **Leave out** in the options for the same count.
 
 On a PR's **Files changed** page, **Mark tests viewed** by the viewed files count marks
